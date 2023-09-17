@@ -1,31 +1,30 @@
-import os
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from PIL import ImageGrab, Image
+import pyautogui
 
-os.environ["webdriver.chrome.driver"] = "./chromedriver"
-options = webdriver.ChromeOptions()
-options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-browser = webdriver.Chrome(options=options)
+# Take a screenshot of the entire screen using Pillow
+screenshot = ImageGrab.grab()
 
-# Navigate directly to the activity log for comments
-browser.get('https://www.facebook.com/1322687115/allactivity?activity_history=false&category_key=COMMENTSCLUSTER&manage_mode=false&should_load_landing_page=false')
+def locate_image_on_screen(image_path, screenshot):
+    search_image = Image.open(image_path)
+    search_data = list(search_image.getdata())
+    screen_data = list(screenshot.getdata())
 
-def click_checkbox():
-    try:
-        # Attempt to click the checkbox
-        checkbox = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.NAME, 'comet_activity_log_select_all_checkbox'))
-        )
-        if checkbox.is_displayed():
-            checkbox.click()
-            print("Checkbox clicked successfully!")
-        else:
-            print("Checkbox is obscured. Trying JavaScript click.")
-            browser.execute_script("arguments[0].click();", checkbox)
-            print("Checkbox clicked using JavaScript!")
-    except Exception as e:
-        print("Error:", e)
+    for y in range(screenshot.height - search_image.height + 1):
+        for x in range(screenshot.width - search_image.width + 1):
+            if screen_data[y * screenshot.width + x] == search_data[0]:
+                match_found = all(
+                    screen_data[(y + i) * screenshot.width + x + j] == search_data[i * search_image.width + j]
+                    for i in range(search_image.height)
+                    for j in range(search_image.width)
+                )
+                if match_found:
+                    return x + search_image.width // 2, y + search_image.height // 2
+    return None
 
-click_checkbox()
+# Locate the "Remove" button within the screenshot
+remove_button_location = locate_image_on_screen('remove_button.png', screenshot)
+if remove_button_location:
+    pyautogui.click(remove_button_location)
+    print("Remove button clicked!")
+else:
+    print("Remove button not found!")
