@@ -24,14 +24,6 @@ def delete_comments():
         )
         if checkbox.is_displayed():
             checkbox.click()
-
-            # Wait for the "Remove" button to be clickable
-            remove_button = WebDriverWait(browser, 10).until(
-                  EC.element_to_be_clickable((By.XPATH, "//span[text()='Remove']"))
-            )
-        
-            # Click the "Remove" button
-            remove_button.click()
         else:
             print("Checkbox is obscured. Skipping to next step.")
     except Exception as e:
