@@ -3,19 +3,14 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
 import time
 
 os.environ["webdriver.chrome.driver"] = "./chromedriver"
-browser = webdriver.Chrome()
+options = webdriver.ChromeOptions()
+options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+browser = webdriver.Chrome(options=options)
 
-# Navigate to Facebook
-browser.get('https://www.facebook.com/')
-
-# Allow the user to log in manually
-input("Please log in to Facebook and then press Enter here to continue...")
-
-# Navigate to the activity log for comments
+# Navigate directly to the activity log for comments
 browser.get('https://www.facebook.com/1322687115/allactivity?activity_history=false&category_key=COMMENTSCLUSTER&manage_mode=false&should_load_landing_page=false')
 
 def click_element_using_js(element):
@@ -29,6 +24,14 @@ def delete_comments():
         )
         if checkbox.is_displayed():
             checkbox.click()
+
+            # Wait for the "Remove" button to be clickable
+            remove_button = WebDriverWait(browser, 10).until(
+                  EC.element_to_be_clickable((By.XPATH, "//span[text()='Remove']"))
+            )
+        
+            # Click the "Remove" button
+            remove_button.click()
         else:
             print("Checkbox is obscured. Skipping to next step.")
     except Exception as e:
