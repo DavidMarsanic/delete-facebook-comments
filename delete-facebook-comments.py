@@ -1,11 +1,9 @@
 import os
 import sys
 import subprocess
+import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
 
 os.environ["webdriver.chrome.driver"] = "./chromedriver"
 options = webdriver.ChromeOptions()
@@ -18,43 +16,37 @@ browser.get('https://www.facebook.com/1322687115/allactivity?activity_history=fa
 def select_and_remove():
     try:
         # Attempt to click the checkbox
-        checkbox = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.NAME, 'comet_activity_log_select_all_checkbox'))
-        )
+        checkbox = browser.find_element(By.NAME, 'comet_activity_log_select_all_checkbox')
         if checkbox.is_displayed():
             checkbox.click()
             print("Checkbox clicked successfully!")
             
-            # Wait for the "Remove" button to be clickable
-            remove_button = WebDriverWait(browser, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//span[text()='Remove']"))
-            )
             # Click the "Remove" button
+            remove_button = browser.find_element(By.XPATH, "//span[text()='Remove']")
             remove_button.click()
-        else:
-            print("Checkbox is obscured. Trying JavaScript click.")
-            browser.execute_script("arguments[0].click();", checkbox)
-            print("Checkbox clicked using JavaScript!")
     except Exception as e:
         print("Error:", e)
 
 def confirm_remove():
     try:
         # Wait for the confirmation dialog to be displayed
-        confirm_dialog = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'This action cannot be undone.')]/ancestor::div[@role='dialog']"))
-        )
-
+        confirm_dialog = browser.find_element(By.XPATH, "//div[contains(text(),'This action cannot be undone.')]/ancestor::div[@role='dialog']")
+        
         # If the confirmation dialog is displayed, proceed to confirm removal
         if confirm_dialog:
             # Locate the "Remove" button in the confirmation dialog and click it
-            confirm_remove_button = WebDriverWait(browser, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Remove']"))
-            )
+            confirm_remove_button = browser.find_element(By.XPATH, "//div[@aria-label='Remove']")
             confirm_remove_button.click()
             print("Comments removed successfully!")
     except Exception as e:
         print("Error:", e)
+
+def final_confirmation():
+    try:
+        confirm_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Remove"][role="button"] > div:not([style])')
+        confirm_button.click()
+    except Exception as e:
+        print("Error during final confirmation:", e)
 
 while True:
     input("Press Enter to run the delete comments logic or Ctrl+C to exit.")
@@ -62,4 +54,7 @@ while True:
     time.sleep(1)
     # Call the checkbox killer script
     subprocess.run([sys.executable, "/Users/david/Documents/Code/delete-facebook-comments/checkbox-killer"])
+    final_confirmation()
 
+# You can continue with other operations or close the browser if needed.
+# browser.quit()
