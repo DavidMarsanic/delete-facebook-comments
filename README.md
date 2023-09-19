@@ -1,5 +1,7 @@
 # Facebook Comment Deletion Script
 
+![Clean Comments Inbox](clean-comments-history.png)
+
 This script automates the process of deleting comments from your Facebook activity log. It uses Selenium with Python to interact with the Facebook interface and remove comments.
 
 ## Prerequisites
