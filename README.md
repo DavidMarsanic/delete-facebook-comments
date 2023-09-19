@@ -1,4 +1,4 @@
-# Facebook Comment Deletion Script
+# Facebook Comment Eradicator
 
 ![Clean Comments Inbox](Clean-comments-history.png)
 
