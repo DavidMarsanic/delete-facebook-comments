@@ -4,7 +4,8 @@ import subprocess
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-import random
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 os.environ["webdriver.chrome.driver"] = "./chromedriver"
 options = webdriver.ChromeOptions()
@@ -57,10 +58,16 @@ while True:
     subprocess.run([sys.executable, "/Users/david/Documents/Code/delete-facebook-comments/checkbox-killer"])
     final_confirmation()
     
-    # Wait for a random interval between 10 to 15 seconds before rerunning the process
-    sleep_time = random.randint(10, 15)
-    print(f"Waiting for {sleep_time} seconds before rerunning...")
-    time.sleep(sleep_time)
+    # Continuously check if the first checkbox has become clickable every second
+    while True:
+        try:
+            checkbox = WebDriverWait(browser, 1).until(EC.element_to_be_clickable((By.NAME, 'comet_activity_log_select_all_checkbox')))
+            if checkbox:
+                print("Checkbox is clickable again. Proceeding with the next deletion cycle.")
+                break
+        except:
+            print("Waiting for checkbox to become clickable...")
+            time.sleep(1)
 
 # You can continue with other operations or close the browser if needed.
 # browser.quit()
