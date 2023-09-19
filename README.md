@@ -34,10 +34,14 @@ python3 comments-eradicator
 
 ### **Step 2: Let the Script Work**
 
-Once the script starts, it will navigate to your Facebook activity log for comments and begin the deletion process. The script will continuously check for comments and delete them. If there are no comments left or if there's a delay in loading, the script will wait until the checkbox to select comments becomes clickable again and then continue the deletion process.
+Once the script starts, it will navigate to your Facebook activity log for comments and begin the deletion process. 
 
-### **Notes**
+The script will continuously check for comments and delete them. If there are no comments left or if there's a delay in loading, the script will wait until the checkbox to select comments becomes clickable again and then continue the deletion process.
+
+## **Notes**
 
 Facebook will occasionally prompt you to write your Facebook password. Just input it and let the program run.
+
 Ensure that the ChromeDriver version matches the version of Chrome you have installed.
+
 The script uses a specific Chrome instance and won't interfere with your regular Chrome sessions.
