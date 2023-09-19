@@ -4,6 +4,7 @@ import subprocess
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+import random
 
 os.environ["webdriver.chrome.driver"] = "./chromedriver"
 options = webdriver.ChromeOptions()
@@ -55,6 +56,11 @@ while True:
     # Call the checkbox killer script
     subprocess.run([sys.executable, "/Users/david/Documents/Code/delete-facebook-comments/checkbox-killer"])
     final_confirmation()
+    
+    # Wait for a random interval between 10 to 15 seconds before rerunning the process
+    sleep_time = random.randint(10, 15)
+    print(f"Waiting for {sleep_time} seconds before rerunning...")
+    time.sleep(sleep_time)
 
 # You can continue with other operations or close the browser if needed.
 # browser.quit()
