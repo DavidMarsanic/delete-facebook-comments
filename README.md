@@ -1,73 +1,36 @@
-# delete-facebook-comments
+Facebook Comment Deletion Script
+This script automates the process of deleting comments from your Facebook activity log. It uses Selenium with Python to interact with the Facebook interface and remove comments.
 
-**Run in terminal:** 
+Prerequisites
+Python 3.x
+Selenium: Install using pip install selenium
+Google Chrome
+ChromeDriver:
+The repository includes a ChromeDriver binary compatible with macOS. If you're using a different operating system, you'll need to download the appropriate ChromeDriver for your system from the official site and ensure it's in the same directory as the script or in your PATH.
+How to Use
+Step 1: Start a Custom Chrome Instance
+Before running the script, you need to start a custom instance of Google Chrome. This won't interfere with your existing Chrome sessions.
 
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_temp”
+Run the following command in your terminal:
 
-**How to locate the illusive confirm button element:**
+bash
+Copy code
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_temp"
+This command starts a new Chrome instance that the script can attach to without affecting your main Chrome profile.
 
-Here are the key attributes and their potential uses:
+Step 2: Run the Script
+Navigate to the directory containing the script and run:
 
-aria-label="Remove": This attribute indicates that the element has an accessibility label of "Remove". This can be a useful locator if it's unique on the page.
+bash
+Copy code
+python script_name.py
+Replace script_name.py with the name you've given to the script.
 
-Selenium Locator: driver.findElement(By.cssSelector("[aria-label='Remove']"))
-role="button": This attribute indicates that the element is intended to be used as a button. This can be combined with the aria-label for a more specific locator.
+Step 3: Let the Script Work
+Once the script starts, it will navigate to your Facebook activity log for comments and begin the deletion process. The script will continuously check for comments and delete them. If there are no comments left or if there's a delay in loading, the script will wait until the checkbox to select comments becomes clickable again and then continue the deletion process.
 
-Selenium Locator: driver.findElement(By.cssSelector("[aria-label='Remove'][role='button']"))
-tabindex="0": This attribute makes the element focusable using the keyboard. It's not unique by itself, but it can be combined with other attributes for a more specific locator.
+Notes
 
-class Attributes: The element and its children have multiple class names. While these look like they might be dynamically generated (and thus might change over time), you can use a subset of them if you find any that are stable. However, be cautious, as these can change with site updates.
-
-Text Content "Remove": The innermost span element contains the text "Remove". This can be a useful locator if it's unique on the page.
-
-Selenium Locator (XPath): driver.findElement(By.xpath("//span[text()='Remove']"))
-data-visualcompletion="ignore": This attribute might indicate that the element is ignored for visual completion checks. It's not unique by itself, but it can be combined with other attributes if needed.
-
-Recommendations:
-The aria-label and the text content "Remove" are the most stable and human-readable attributes in this element. They are likely the best candidates for creating Selenium locators.
-The class names appear to be dynamically generated and might not be reliable for long-term use. However, if you're writing a short-term script or if you've observed that certain class names remain consistent, you can use them.
-Always test your locators to ensure they reliably select the desired element, especially after any updates to the webpage.
-
-
-
-Issue: 
-
-confirm button: 
-<div aria-label="Remove" class="x1i10hfl xjbqb8w x6umtig x1b1mbwd xaqea5y xav7gou x1ypdohk xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1o1ewxj x3x9cwd x1e5q0jg x13rtm0m x87ps6o x1lku1pv x1a2a7pz x9f619 x3nfvp2 xdt5ytf xl56j7k x1n2onr6 xh8yej3" role="button" tabindex="0"><div class="x1n2onr6 x1ja2u2z x78zum5 x2lah0s xl56j7k x6s0dn4 xozqiw3 x1q0g3np xi112ho x17zwfj4 x585lrc x1403ito x972fbf xcfux6l x1qhh985 xm0m39n x9f619 xbxaen2 x1u72gb5 xtvsq51 x1r1pt67"><div class="x6s0dn4 x78zum5 xl56j7k x1608yet xljgi0e x1e0frkt"><div class="x9f619 x1n2onr6 x1ja2u2z x193iq5w xeuugli x6s0dn4 x78zum5 x2lah0s x1fbi1t2 xl8fo4v"><span class="x193iq5w xeuugli x13faqbe x1vvkbs xlh3980 xvmahel x1n0sxbx x1lliihq x1s928wv xhkezso x1gmr53x x1cpjm7i x1fgarty x1943h6x x4zkp8e x3x7a5m x6prxxf xvq8zen x1s688f xtk6v10" dir="auto"><span class="x1lliihq x6ikm8r x10wlt62 x1n2onr6 xlyipyv xuxw1ft">Remove</span></span></div></div><div class="x1o1ewxj x3x9cwd x1e5q0jg x13rtm0m x1ey2m1c xds687c xg01cxk x47corl x10l6tqk x17qophe x13vifvy x1ebt8du x19991ni x1dhq9h x1wpzbip" data-visualcompletion="ignore"></div></div></div>
-
-remove button: 
-<div aria-label="Remove" class="x1i10hfl xjbqb8w x6umtig x1b1mbwd xaqea5y xav7gou x1ypdohk xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1o1ewxj x3x9cwd x1e5q0jg x13rtm0m x87ps6o x1lku1pv x1a2a7pz x9f619 x3nfvp2 xdt5ytf xl56j7k x1n2onr6 xh8yej3" role="button" tabindex="0"><div class="x1n2onr6 x1ja2u2z x78zum5 x2lah0s xl56j7k x6s0dn4 xozqiw3 x1q0g3np xi112ho x17zwfj4 x585lrc x1403ito x972fbf xcfux6l x1qhh985 xm0m39n x9f619 xn6708d x1ye3gou x1qhmfi1 x1r1pt67" style="transform: none;"><div class="x6s0dn4 x78zum5 xl56j7k x1608yet xljgi0e x1e0frkt"><div class="x9f619 x1n2onr6 x1ja2u2z x193iq5w xeuugli x6s0dn4 x78zum5 x2lah0s x1fbi1t2 xl8fo4v"><i data-visualcompletion="css-img" class="x1b0d499 xep6ejk" style="background-image: url(&quot;https://static.xx.fbcdn.net/rsrc.php/v3/yR/r/ZPQ1wTgIr2t.png?_nc_eui2=AeFlwoCGwv8_YYbaYj2Eh7UNdXAxVopWxJV1cDFWilbElWo5NH-bdoV9N9Cg6VxC47c&quot;); background-position: 0px -332px; background-size: auto; width: 16px; height: 16px; background-repeat: no-repeat; display: inline-block;"></i></div><div class="x9f619 x1n2onr6 x1ja2u2z x193iq5w xeuugli x6s0dn4 x78zum5 x2lah0s x1fbi1t2 xl8fo4v"><span class="x193iq5w xeuugli x13faqbe x1vvkbs xlh3980 xvmahel x1n0sxbx x1lliihq x1s928wv xhkezso x1gmr53x x1cpjm7i x1fgarty x1943h6x x4zkp8e x3x7a5m x6prxxf xvq8zen x1s688f x1dem4cn" dir="auto"><span class="x1lliihq x6ikm8r x10wlt62 x1n2onr6 xlyipyv xuxw1ft">Remove</span></span></div></div><div class="x1o1ewxj x3x9cwd x1e5q0jg x13rtm0m x1ey2m1c xds687c xg01cxk x47corl x10l6tqk x17qophe x13vifvy x1ebt8du x19991ni x1dhq9h x1wpzbip" data-visualcompletion="ignore"></div></div></div>
-
-The way to solve the issue was to ask ChatGPT to find a way to differentiate between these two. And it found a way. 
-
-I also could have solved this by selecting the second element: 
-
-Yes, it's possible to instruct Selenium to find the second element on a page with specific characteristics. Selenium provides various methods to locate elements, and you can use these methods to find multiple elements that match the specified characteristics. For example, if you're using Python, you can use the `find_elements_by_*` methods (e.g., `find_elements_by_xpath`, `find_elements_by_css_selector`) to find all matching elements and then access the second element from the list.
-
-Here's an example in Python:
-
-```python
-from selenium import webdriver
-
-# Initialize the WebDriver
-driver = webdriver.Chrome()
-
-# Navigate to a webpage
-driver.get("https://example.com")
-
-# Find all elements with a specific characteristic (e.g., by CSS selector)
-elements = driver.find_elements_by_css_selector("your_css_selector_here")
-
-# Access the second element (index 1 since indexing starts from 0)
-second_element = elements[1]
-
-# Now you can interact with the second element as needed
-second_element.click()
-
-# Don't forget to close the WebDriver when done
-driver.quit()
-```
-
-In this example, `elements` is a list containing all the elements that match the specified CSS selector. You can then access the second element in the list using indexing (in this case, `elements[1]`).
-
-Make sure to adjust the locator strategy (`"your_css_selector_here"`) to match the characteristics you're looking for.
+Facebook will occasionally prompt you to write your facebook password. Just input it and let the program run. 
+Ensure that the ChromeDriver version matches the version of Chrome you have installed.
+The script uses a specific Chrome instance and won't interfere with your regular Chrome sessions.
