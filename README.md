@@ -45,3 +45,9 @@ Facebook will occasionally prompt you to write your Facebook password. Just inpu
 Ensure that the ChromeDriver version matches the version of Chrome you have installed.
 
 The script uses a specific Chrome instance and won't interfere with your regular Chrome sessions.
+
+## **Future Plans**
+
+Creating a click-and-play executable with pyintaller
+
+Ensuring out-of-the-box support for Linux and Windows
