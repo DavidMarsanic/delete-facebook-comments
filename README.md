@@ -1,4 +1,4 @@
-# Facebook Comment Eradicator
+# Facebook Old Comment Eradicator
 
 ![Clean Comments Inbox](Clean-comments-history.png)
 
