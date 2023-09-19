@@ -51,7 +51,6 @@ def final_confirmation():
         print("Error during final confirmation:", e)
 
 while True:
-    input("Press Enter to run the delete comments logic or Ctrl+C to exit.")
     select_and_remove()
     time.sleep(1)
     # Call the checkbox killer script
