@@ -31,13 +31,22 @@ This command starts a new Chrome instance that the script can attach to without 
 ### **Step 2: Run the Script**
 Navigate to the directory containing the script and run either of these commands:
 
-For deleting comments run: 
+For deleting comments, run: 
 ```bash
 python3 comments-eradicator
 
 ```
+For archiving facebook posts, run: 
+```bash
+python3 posts-archiver
 
-posts-archiver.py 
+```
+
+For undoing likes, run: 
+```bash
+python3 likes-eradicator
+
+```
 
 ### **Step 2: Let the Script Work**
 
