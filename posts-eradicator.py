@@ -37,16 +37,16 @@ def confirm_remove():
         
         # If the confirmation dialog is displayed, proceed to confirm removal
         if confirm_dialog:
-            # Locate the "Remove" button in the confirmation dialog and click it
-            confirm_remove_button = browser.find_element(By.XPATH, "//div[@aria-label='Move to trash']")
-            confirm_remove_button.click()
-            print("Posts removed successfully!")
+            # Locate the "Move to trash" button in the confirmation dialog and click it
+            move_to_trash_button = browser.find_element(By.XPATH, "//div[@aria-label='Move to trash'][@role='button']")
+            move_to_trash_button.click()
+            print("Posts moved to trash successfully!")
     except Exception as e:
         print("Error:", e)
 
 def final_confirmation():
     try:
-        confirm_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Remove"][role="button"] > div:not([style])')
+        confirm_button = browser.find_element(By.XPATH, "//div[@aria-label='Move to trash'][@role='button']")
         confirm_button.click()
     except Exception as e:
         print("Error during final confirmation:", e)
