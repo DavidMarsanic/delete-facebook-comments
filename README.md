@@ -1,8 +1,10 @@
-# Facebook Old Comment Eradicator
+# Facebook Post, Comment, Likes Eradicator
 
 ![Clean Comments Inbox](Clean-comments-history.png)
 
-This script automates the process of deleting comments from your Facebook activity log. It uses Selenium with Python to interact with the Facebook interface and remove comments.
+## UPDATE - The code now includes scripts to remove likes and posts too. 
+
+This script automates the process of deleting posts, comments, and likes from your Facebook profile. It uses Selenium with Python to interact with the Facebook acitivty log interface to remove the content.
 
 ## Prerequisites
 
@@ -27,12 +29,15 @@ Run the following command in your terminal:
 This command starts a new Chrome instance that the script can attach to without affecting your main Chrome profile.
 
 ### **Step 2: Run the Script**
-Navigate to the directory containing the script and run:
+Navigate to the directory containing the script and run either of these commands:
 
+For deleting comments run: 
 ```bash
 python3 comments-eradicator
 
 ```
+
+posts-archiver.py 
 
 ### **Step 2: Let the Script Work**
 
