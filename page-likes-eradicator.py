@@ -13,7 +13,7 @@ options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 browser = webdriver.Chrome(options=options)
 
 # Navigate directly to the activity log for comments
-browser.get('https://web.facebook.com/1322687115/allactivity?activity_history=false&category_key=LIKEDPOSTS&manage_mode=false&should_load_landing_page=false')
+browser.get('https://web.facebook.com/1322687115/allactivity?activity_history=false&category_key=LIKEDINTERESTS&manage_mode=false&should_load_landing_page=false')
 
 def select_and_remove():
     try:
