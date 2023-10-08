@@ -6,6 +6,10 @@
 
 This script automates the process of deleting posts, comments, and likes from your Facebook profile. It uses Selenium with Python to interact with the Facebook acitivty log interface to remove the content.
 
+## Video of the script in action: 
+
+[![Facebook Post, Comment, Likes Eradicator](http://img.youtube.com/vi/aj2dyRZypek/0.jpg)](https://youtu.be/aj2dyRZypek "Facebook Post, Comment, Likes Eradicator")
+
 ## Prerequisites
 
 - **Python 3.x**
@@ -13,8 +17,6 @@ This script automates the process of deleting posts, comments, and likes from yo
 - **Google Chrome**
 - **ChromeDriver**: 
   - The repository includes a ChromeDriver binary compatible with macOS. If you're using a different operating system, you'll need to download the appropriate ChromeDriver for your system from the [official site](https://sites.google.com/a/chromium.org/chromedriver/downloads) and ensure it's in the same directory as the script or in your PATH.
-
-[![Facebook Post, Comment, Likes Eradicator](http://img.youtube.com/vi/aj2dyRZypek/0.jpg)](https://youtu.be/aj2dyRZypek "Facebook Post, Comment, Likes Eradicator")
 
 
 ## How to Use
