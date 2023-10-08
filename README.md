@@ -14,7 +14,7 @@ This script automates the process of deleting posts, comments, and likes from yo
 - **ChromeDriver**: 
   - The repository includes a ChromeDriver binary compatible with macOS. If you're using a different operating system, you'll need to download the appropriate ChromeDriver for your system from the [official site](https://sites.google.com/a/chromium.org/chromedriver/downloads) and ensure it's in the same directory as the script or in your PATH.
 
-[![Video Thumbnail](https://drive.google.com/thumbnail?id=1QYSVkIK8OT7HYFhTySFP2amFeUgDEXbp)](https://drive.google.com/file/d/1QYSVkIK8OT7HYFhTySFP2amFeUgDEXbp/view?usp=sharing)
+[![Facebook Post, Comment, Likes Eradicator](http://img.youtube.com/vi/aj2dyRZypek/0.jpg)](https://youtu.be/aj2dyRZypek "Facebook Post, Comment, Likes Eradicator")
 
 
 ## How to Use
