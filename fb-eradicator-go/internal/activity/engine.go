@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
@@ -351,40 +350,10 @@ func (e *Engine) pollCheckbox(timeout time.Duration) (bool, error) {
 
 // navigate loads url with a bounded timeout, so a stalled DevTools
 // connection fails with a clear error instead of hanging the run forever.
-// It also closes any other open tab (Chrome's own initial blank tab, or a
-// leftover from a previous run) once our own tab is confirmed to be on
-// Facebook, so exactly one tab — the useful one — stays open.
 func (e *Engine) navigate(url string) error {
 	ctx, cancel := context.WithTimeout(e.ctx, navTimeout)
 	defer cancel()
-	if err := chromedp.Run(ctx, chromedp.Navigate(url)); err != nil {
-		return err
-	}
-	e.closeOtherTabs()
-	return nil
-}
-
-// closeOtherTabs closes every open tab that isn't currently on facebook.com.
-// Tabs are identified by URL rather than by ID or creation order: with a
-// remote allocator, chromedp can end up reusing an already-open blank tab
-// as its own working tab instead of creating a genuinely new one, which
-// makes any "close whatever existed before ours" logic unreliable — it can
-// end up closing the very tab chromedp is using. Filtering on URL sidesteps
-// that entirely, since our tab is unambiguously the one on Facebook.
-func (e *Engine) closeOtherTabs() {
-	ctx, cancel := context.WithTimeout(e.ctx, actionTimeout)
-	defer cancel()
-
-	targets, err := chromedp.Targets(ctx)
-	if err != nil {
-		return
-	}
-	for _, t := range targets {
-		if t.Type != "page" || strings.Contains(t.URL, "facebook.com") {
-			continue
-		}
-		_ = chromedp.Run(ctx, target.CloseTarget(t.TargetID))
-	}
+	return chromedp.Run(ctx, chromedp.Navigate(url))
 }
 
 func (e *Engine) selectAll() error {

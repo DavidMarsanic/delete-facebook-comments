@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	cdpTarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
@@ -23,6 +24,13 @@ const launchTimeout = 15 * time.Second
 // /json/version DevTools HTTP endpoint.
 type browserVersion struct {
 	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+}
+
+// devtoolsTarget mirrors one entry from Chrome's /json/list endpoint.
+type devtoolsTarget struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	URL  string `json:"url"`
 }
 
 // NewBrowserContext attaches chromedp to Chrome running against this tool's
@@ -50,6 +58,15 @@ type browserVersion struct {
 // Facebook fresh in a profile with no history (itself a CAPTCHA trigger),
 // its cookies are seeded from the user's real profile before the first
 // launch, so it starts already authenticated. See seed.go.
+//
+// Rather than letting chromedp open its own new tab (ambiguous — it can
+// either create a genuinely new one or silently reuse an existing blank
+// one depending on browser state) and then hunting down and closing
+// whatever's left over, this explicitly finds the one existing page tab
+// (Chrome's own initial blank tab on a fresh launch, or a leftover from a
+// previous run) and attaches chromedp directly to it via WithTargetID. The
+// tool then navigates that same tab to Facebook. No second tab is ever
+// created, so there's nothing to clean up afterwards.
 //
 // The window is visible (not headless) on purpose: a first run (or a
 // cookie-seed miss) needs the user to log in by hand, and any CAPTCHA or
@@ -89,8 +106,21 @@ func NewBrowserContext(chromePath string) (context.Context, context.CancelFunc, 
 		}
 	}
 
+	// Settle on exactly one existing page tab to reuse: if several are
+	// already open (e.g. leftovers from before this reuse logic existed),
+	// keep the first and close the rest, so we start from a known,
+	// single-tab state before attaching chromedp to it.
+	pageID := settleOnOnePage(port)
+
 	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-	ctx, ctxCancel := chromedp.NewContext(allocCtx)
+
+	var ctx context.Context
+	var ctxCancel context.CancelFunc
+	if pageID != "" {
+		ctx, ctxCancel = chromedp.NewContext(allocCtx, chromedp.WithTargetID(cdpTarget.ID(pageID)))
+	} else {
+		ctx, ctxCancel = chromedp.NewContext(allocCtx)
+	}
 
 	// abortSetup is only for failures below, before anything is on screen
 	// worth keeping: it fully tears down our tab and the connection.
@@ -99,13 +129,13 @@ func NewBrowserContext(chromePath string) (context.Context, context.CancelFunc, 
 		allocCancel()
 	}
 
-	if err := chromedp.Run(ctx, chromedp.Navigate("about:blank")); err != nil {
+	if err := chromedp.Run(ctx); err != nil {
 		abortSetup()
 		return nil, nil, err
 	}
 
 	// cancel, returned to the caller, deliberately skips ctxCancel: calling
-	// it closes the tab chromedp created (standard behavior for the
+	// it closes the tab chromedp is attached to (standard behavior for the
 	// context returned by the top-level NewContext), and Chrome then
 	// replaces it with a blank New Tab Page since a window can't have zero
 	// tabs — which would erase whatever the run just showed the instant it
@@ -115,16 +145,30 @@ func NewBrowserContext(chromePath string) (context.Context, context.CancelFunc, 
 		allocCancel()
 	}
 
-	// Extra tabs (Chrome's own initial blank tab, or a leftover from a
-	// previous run) are cleaned up later, once the tool has actually
-	// navigated somewhere — see activity.Engine.navigate. Trying to
-	// identify "our" tab here, before it's done anything distinctive, is
-	// unreliable: the remote allocator can reuse an existing blank tab as
-	// its own working tab rather than opening a genuinely new one, and a
-	// naive "close whatever existed before" approach ends up closing that
-	// reused tab along with everything else.
-
 	return ctx, cancel, nil
+}
+
+// settleOnOnePage returns the ID of a single existing page tab to reuse,
+// closing any others first. Returns "" if none exist yet (chromedp will
+// fall back to its own default behavior in that case).
+func settleOnOnePage(port int) string {
+	targets, err := listTargets(port)
+	if err != nil {
+		return ""
+	}
+
+	var keep string
+	for _, t := range targets {
+		if t.Type != "page" {
+			continue
+		}
+		if keep == "" {
+			keep = t.ID
+			continue
+		}
+		closeTargetHTTP(port, t.ID)
+	}
+	return keep
 }
 
 // reuseRunningInstance looks for a Chrome process already running against
@@ -187,16 +231,8 @@ func findRunningInstance(profileDir string) (port int, pid string, ok bool) {
 // hasOpenPage reports whether the Chrome instance at port has at least one
 // open tab.
 func hasOpenPage(port int) bool {
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/list", port))
+	targets, err := listTargets(port)
 	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-
-	var targets []struct {
-		Type string `json:"type"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&targets); err != nil {
 		return false
 	}
 	for _, t := range targets {
@@ -205,6 +241,31 @@ func hasOpenPage(port int) bool {
 		}
 	}
 	return false
+}
+
+// listTargets fetches Chrome's own list of open tabs/pages over its
+// DevTools HTTP API — plain JSON over HTTP, no CDP session required.
+func listTargets(port int) ([]devtoolsTarget, error) {
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/list", port))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var targets []devtoolsTarget
+	if err := json.NewDecoder(resp.Body).Decode(&targets); err != nil {
+		return nil, err
+	}
+	return targets, nil
+}
+
+// closeTargetHTTP closes one tab via Chrome's DevTools HTTP API.
+func closeTargetHTTP(port int, id string) {
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/close/%s", port, id))
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
 }
 
 // freePort asks the OS for an available TCP port by briefly binding to
