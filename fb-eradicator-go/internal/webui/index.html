@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fberadicator</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8ec;
+    --muted: #9aa1ac;
+    --accent: #4f8cff;
+    --danger: #e05252;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --border: #dde1e8;
+      --text: #1a1d23;
+      --muted: #5a6070;
+      --accent: #2f6fed;
+      --danger: #c53030;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+  main { width: 100%; max-width: 640px; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  .subtitle { color: var(--muted); margin: 0 0 1.5rem; font-size: .9rem; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .35rem; }
+  select, input[type=number] {
+    width: 100%;
+    padding: .5rem .6rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .95rem;
+  }
+  .row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+  .row > div { flex: 1; }
+  .checkbox-row { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+  .checkbox-row input { width: auto; }
+  .checkbox-row label { margin: 0; color: var(--text); font-size: .9rem; }
+  button {
+    width: 100%;
+    padding: .7rem;
+    border-radius: 6px;
+    border: none;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--accent);
+    color: white;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.danger { background: var(--danger); }
+  .safety {
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: .75rem;
+    line-height: 1.4;
+  }
+  pre#log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem;
+    height: 260px;
+    overflow-y: auto;
+    font-size: .8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+  .status { font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>fberadicator</h1>
+  <p class="subtitle">Clears your own Facebook Activity Log — comments, likes, interests, or posts.</p>
+
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label for="mode">What to clear</label>
+        <select id="mode"></select>
+      </div>
+      <div>
+        <label for="limit">Batch limit (0 = unlimited)</label>
+        <input type="number" id="limit" min="0" value="0">
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="dryRun" checked>
+      <label for="dryRun">Dry run — detect only, don't delete anything</label>
+    </div>
+
+    <button id="startBtn">Start</button>
+    <p class="safety">
+      This acts on your own Facebook account only. A Chrome window will open
+      (or reuse one already open) — if it asks you to log in or solve a
+      CAPTCHA, do that there; this page will keep waiting automatically.
+    </p>
+  </div>
+
+  <div class="panel">
+    <div class="status" id="status">Idle.</div>
+    <pre id="log"></pre>
+  </div>
+</main>
+
+<script>
+const modeSelect = document.getElementById('mode');
+const limitInput = document.getElementById('limit');
+const dryRunCheckbox = document.getElementById('dryRun');
+const startBtn = document.getElementById('startBtn');
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+
+function appendLine(text) {
+  logEl.textContent += (logEl.textContent ? '\n' : '') + text;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function loadModes() {
+  const res = await fetch('/api/modes');
+  const modes = await res.json();
+  modeSelect.innerHTML = '';
+  for (const m of modes) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.id + ' (' + m.verb + ')';
+    modeSelect.appendChild(opt);
+  }
+}
+
+function streamLog() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = (e) => appendLine(e.data);
+  es.addEventListener('done', () => {
+    es.close();
+    statusEl.textContent = 'Done.';
+    startBtn.disabled = false;
+  });
+  es.onerror = () => {
+    es.close();
+    startBtn.disabled = false;
+  };
+}
+
+startBtn.addEventListener('click', async () => {
+  logEl.textContent = '';
+  statusEl.textContent = 'Running…';
+  startBtn.disabled = true;
+
+  const body = {
+    mode: modeSelect.value,
+    dryRun: dryRunCheckbox.checked,
+    limit: parseInt(limitInput.value, 10) || 0,
+  };
+
+  const res = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    appendLine('Error: ' + text);
+    statusEl.textContent = 'Failed to start.';
+    startBtn.disabled = false;
+    return;
+  }
+
+  streamLog();
+});
+
+loadModes();
+</script>
+</body>
+</html>

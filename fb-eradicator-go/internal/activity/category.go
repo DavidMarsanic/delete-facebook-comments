@@ -28,7 +28,7 @@ var registry = map[string]Category{
 		Verb:        "removed",
 		ActionSel:   "//span[text()='Remove']",
 		ActionXPath: true,
-		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"] > div:not([style])`,
+		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"]`,
 	},
 	"likes": {
 		Name:        "likes",
@@ -36,7 +36,7 @@ var registry = map[string]Category{
 		Verb:        "unliked",
 		ActionSel:   "//span[text()='Remove']",
 		ActionXPath: true,
-		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"] > div:not([style])`,
+		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"]`,
 	},
 	"interests": {
 		Name:        "interests",
@@ -44,7 +44,7 @@ var registry = map[string]Category{
 		Verb:        "removed",
 		ActionSel:   "//span[text()='Remove']",
 		ActionXPath: true,
-		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"] > div:not([style])`,
+		ConfirmSel:  `div[role="dialog"] div[aria-label="Remove"][role="button"]`,
 	},
 	"posts": {
 		Name:         "posts",

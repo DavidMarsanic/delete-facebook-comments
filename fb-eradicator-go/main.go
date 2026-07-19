@@ -9,12 +9,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"fberadicator/internal/activity"
 	"fberadicator/internal/browser"
 	"fberadicator/internal/session"
+	"fberadicator/internal/webui"
 )
 
 func main() {
@@ -25,6 +30,7 @@ func main() {
 }
 
 func run() error {
+	guiFlag := flag.Bool("gui", false, "start the local web GUI instead of running from flags")
 	modeFlag := flag.String("mode", "", fmt.Sprintf("what to clear: %s", strings.Join(activity.Modes(), ", ")))
 	dryRunFlag := flag.Bool("dry-run", false, "navigate and detect items only; never click delete/confirm")
 	inspectFlag := flag.Bool("inspect", false, "navigate and dump diagnostic info about the page's selection UI; never click anything")
@@ -34,6 +40,10 @@ func run() error {
 	htmlFlag := flag.String("html", "", "save the final page's full HTML to this path")
 	flag.Usage = usage
 	flag.Parse()
+
+	if *guiFlag {
+		return runGUI()
+	}
 
 	if *modeFlag == "" {
 		usage()
@@ -95,6 +105,35 @@ func run() error {
 		return fmt.Errorf("run failed: %w", runErr)
 	}
 	return nil
+}
+
+// runGUI starts the local web server on an OS-assigned port and opens it
+// in the user's default browser, separate from the automation-controlled
+// Chrome instance the tool drives Facebook through.
+func runGUI() error {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("starting GUI server: %w", err)
+	}
+
+	addr := fmt.Sprintf("http://%s", ln.Addr())
+	fmt.Println("GUI running at", addr)
+	openBrowser(addr)
+
+	return http.Serve(ln, webui.New().Handler())
+}
+
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	_ = cmd.Start()
 }
 
 func runEngine(engine *activity.Engine, inspect, inspectDialog bool) error {
