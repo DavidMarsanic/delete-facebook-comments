@@ -6,6 +6,7 @@
 package webui
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,7 @@ type Server struct {
 	mu      sync.Mutex
 	running bool
 	lines   chan string
+	stop    context.CancelFunc // cancels the current run's operations, if any
 }
 
 func New() *Server {
@@ -39,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/modes", s.handleModes)
 	mux.HandleFunc("/api/run", s.handleRun)
+	mux.HandleFunc("/api/stop", s.handleStop)
 	mux.HandleFunc("/api/stream", s.handleStream)
 	return mux
 }
@@ -70,9 +73,11 @@ func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {
 }
 
 type runRequest struct {
-	Mode   string `json:"mode"`
-	DryRun bool   `json:"dryRun"`
-	Limit  int    `json:"limit"`
+	Mode     string `json:"mode"`
+	DryRun   bool   `json:"dryRun"`
+	Limit    int    `json:"limit"`
+	DateFrom string `json:"dateFrom"`
+	DateTo   string `json:"dateTo"`
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +96,14 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown mode", http.StatusBadRequest)
 		return
 	}
+	if err := activity.ParseDateBound(req.DateFrom); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := activity.ParseDateBound(req.DateTo); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	s.mu.Lock()
 	if s.running {
@@ -102,7 +115,13 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	s.lines = make(chan string, 2000)
 	s.mu.Unlock()
 
-	go s.execute(cat, req.DryRun, req.Limit)
+	opts := activity.Options{
+		DryRun:   req.DryRun,
+		Limit:    req.Limit,
+		DateFrom: req.DateFrom,
+		DateTo:   req.DateTo,
+	}
+	go s.execute(cat, opts)
 
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -110,7 +129,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // execute runs the same browser.Find -> session.NewBrowserContext ->
 // activity.Engine.Run sequence main.go uses for the CLI, just with its
 // output routed to the SSE stream instead of stdout.
-func (s *Server) execute(cat activity.Category, dryRun bool, limit int) {
+func (s *Server) execute(cat activity.Category, opts activity.Options) {
 	lines := s.lines
 	out := &channelWriter{lines: lines}
 
@@ -118,6 +137,7 @@ func (s *Server) execute(cat activity.Category, dryRun bool, limit int) {
 		close(lines)
 		s.mu.Lock()
 		s.running = false
+		s.stop = nil
 		s.mu.Unlock()
 	}()
 
@@ -135,18 +155,51 @@ func (s *Server) execute(cat activity.Category, dryRun bool, limit int) {
 	}
 	defer cancel()
 
-	if dryRun {
+	// A separate cancellable context layered on top of the browser's own,
+	// so Stop can interrupt the engine's in-flight operations without
+	// tearing down the underlying browser connection — cancelling a child
+	// context never cancels its parent, so the browser stays attachable
+	// for the next run either way.
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	s.mu.Lock()
+	s.stop = stop
+	s.mu.Unlock()
+
+	if opts.DryRun {
 		fmt.Fprintf(out, "[dry-run] Checking for items in: %s (nothing will be deleted)\n", cat.Name)
 	} else {
 		fmt.Fprintf(out, "This will act on your own Facebook account. Clearing: %s\n", cat.Name)
 	}
 
-	engine := activity.New(ctx, cat, out, dryRun, limit)
+	engine := activity.New(runCtx, cat, out, opts)
 	if err := engine.Run(); err != nil {
+		if runCtx.Err() != nil {
+			fmt.Fprintln(out, "Stopped.")
+			return
+		}
 		fmt.Fprintln(out, "Error:", err)
 		return
 	}
 	fmt.Fprintln(out, "Finished.")
+}
+
+func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.Lock()
+	stop := s.stop
+	s.mu.Unlock()
+	if stop == nil {
+		http.Error(w, "no run in progress", http.StatusNotFound)
+		return
+	}
+	stop()
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // channelWriter adapts io.Writer to the line channel the SSE handler reads

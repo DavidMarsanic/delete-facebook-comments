@@ -134,16 +134,20 @@ func NewBrowserContext(chromePath string) (context.Context, context.CancelFunc, 
 		return nil, nil, err
 	}
 
-	// cancel, returned to the caller, deliberately skips ctxCancel: calling
-	// it closes the tab chromedp is attached to (standard behavior for the
-	// context returned by the top-level NewContext), and Chrome then
-	// replaces it with a blank New Tab Page since a window can't have zero
-	// tabs — which would erase whatever the run just showed the instant it
-	// finished. allocCancel alone just drops our own WebSocket connection
-	// and leaves the tab exactly as it is.
-	cancel := func() {
-		allocCancel()
-	}
+	// cancel, returned to the caller, is a deliberate no-op. chromedp's
+	// RemoteAllocator does not offer a plain detach: per its own source
+	// (allocate.go, RemoteAllocator.Allocate), cancelling the allocator's
+	// context — which is all allocCancel does — starts a goroutine that
+	// calls Cancel(ctx) internally, and that call is documented to "block
+	// until all pages are closed." There's no way to close the WebSocket
+	// connection alone without going through that page-closing path, so
+	// calling either ctxCancel or allocCancel here reliably closes the tab
+	// the instant a run finishes — confirmed by testing, not just reading
+	// the doc comment. We never manage the underlying Chrome OS process's
+	// lifecycle (it's never killed by this package on the success path), so
+	// there's nothing that actually needs tearing down: leaving the
+	// connection alone and letting it get garbage collected is enough.
+	cancel := func() {}
 
 	return ctx, cancel, nil
 }

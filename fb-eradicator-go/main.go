@@ -36,6 +36,8 @@ func run() error {
 	inspectFlag := flag.Bool("inspect", false, "navigate and dump diagnostic info about the page's selection UI; never click anything")
 	inspectDialogFlag := flag.Bool("inspect-dialog", false, "select and trigger the action to open the confirm dialog, then dump its DOM; never clicks confirm")
 	limitFlag := flag.Int("limit", 0, "stop after this many batches (0 = unlimited)")
+	dateFromFlag := flag.String("date-from", "", "only select items on/after this date (YYYY-MM-DD)")
+	dateToFlag := flag.String("date-to", "", "only select items on/before this date (YYYY-MM-DD)")
 	screenshotFlag := flag.String("screenshot", "", "save a PNG screenshot of the final page state to this path")
 	htmlFlag := flag.String("html", "", "save the final page's full HTML to this path")
 	flag.Usage = usage
@@ -54,6 +56,13 @@ func run() error {
 	if !ok {
 		usage()
 		return fmt.Errorf("unknown mode %q", *modeFlag)
+	}
+
+	if err := activity.ParseDateBound(*dateFromFlag); err != nil {
+		return err
+	}
+	if err := activity.ParseDateBound(*dateToFlag); err != nil {
+		return err
 	}
 
 	chromePath, err := browser.Find()
@@ -79,7 +88,12 @@ func run() error {
 		fmt.Printf("This tool acts on your own Facebook account only. It will now clear: %s\n", cat.Name)
 	}
 
-	engine := activity.New(ctx, cat, os.Stdout, *dryRunFlag, *limitFlag)
+	engine := activity.New(ctx, cat, os.Stdout, activity.Options{
+		DryRun:   *dryRunFlag,
+		Limit:    *limitFlag,
+		DateFrom: *dateFromFlag,
+		DateTo:   *dateToFlag,
+	})
 
 	runErr := runEngine(engine, *inspectFlag, *inspectDialogFlag)
 

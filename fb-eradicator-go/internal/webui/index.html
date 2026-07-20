@@ -113,6 +113,17 @@
       </div>
     </div>
 
+    <div class="row">
+      <div>
+        <label for="dateFrom">Only on/after (optional)</label>
+        <input type="date" id="dateFrom">
+      </div>
+      <div>
+        <label for="dateTo">Only on/before (optional)</label>
+        <input type="date" id="dateTo">
+      </div>
+    </div>
+
     <div class="checkbox-row">
       <input type="checkbox" id="dryRun" checked>
       <label for="dryRun">Dry run — detect only, don't delete anything</label>
@@ -123,6 +134,8 @@
       This acts on your own Facebook account only. A Chrome window will open
       (or reuse one already open) — if it asks you to log in or solve a
       CAPTCHA, do that there; this page will keep waiting automatically.
+      A date range only matches items already loaded on the page — it
+      doesn't scroll to load more.
     </p>
   </div>
 
@@ -135,6 +148,8 @@
 <script>
 const modeSelect = document.getElementById('mode');
 const limitInput = document.getElementById('limit');
+const dateFromInput = document.getElementById('dateFrom');
+const dateToInput = document.getElementById('dateTo');
 const dryRunCheckbox = document.getElementById('dryRun');
 const startBtn = document.getElementById('startBtn');
 const logEl = document.getElementById('log');
@@ -154,6 +169,9 @@ async function loadModes() {
     opt.value = m.id;
     opt.textContent = m.id + ' (' + m.verb + ')';
     modeSelect.appendChild(opt);
+  }
+  if (modes.some(m => m.id === 'comments')) {
+    modeSelect.value = 'comments';
   }
 }
 
@@ -180,6 +198,8 @@ startBtn.addEventListener('click', async () => {
     mode: modeSelect.value,
     dryRun: dryRunCheckbox.checked,
     limit: parseInt(limitInput.value, 10) || 0,
+    dateFrom: dateFromInput.value,
+    dateTo: dateToInput.value,
   };
 
   const res = await fetch('/api/run', {

@@ -34,28 +34,66 @@ const (
 	// error.
 	navTimeout    = 20 * time.Second
 	actionTimeout = 10 * time.Second
+
+	// selectInRangeTimeout is larger than actionTimeout because a wide date
+	// range can mean walking and clicking through months or years of
+	// scrolled-in items in one JS call, not just a single element.
+	selectInRangeTimeout = 60 * time.Second
 )
 
+
+// Options configures an Engine run. All fields have safe zero values: no
+// dry run, no batch limit, no date restriction.
+type Options struct {
+	DryRun bool
+	Limit  int // 0 = unlimited; otherwise stop after this many batches
+
+	// DateFrom and DateTo restrict which items get selected, by the date
+	// shown on Facebook's own day-group headers in the activity log
+	// ("November 17, 2020"). Both are "YYYY-MM-DD"; either or both may be
+	// empty for an open-ended range. Only items whose day header falls
+	// within [DateFrom, DateTo] are selected — the plain select-all
+	// checkbox is never used once a range is set, since that would ignore
+	// the restriction entirely.
+	DateFrom string
+	DateTo   string
+}
 
 // Engine drives one category's automation loop against an already-open
 // chromedp browser context.
 type Engine struct {
-	ctx    context.Context
-	cat    Category
-	out    io.Writer
-	dryRun bool
-	limit  int // 0 = unlimited; otherwise stop after this many batches
+	ctx  context.Context
+	cat  Category
+	out  io.Writer
+	opts Options
 }
 
 // New builds an Engine for the given category. ctx must be a live chromedp
 // context (from chromedp.NewContext), already attached to a browser tab.
-// When dryRun is true, the engine navigates, logs in, and reports whether
-// items are present, but never clicks select-all, the action button, or a
-// confirm dialog — nothing on the account is modified. limit, if non-zero,
-// stops the run after that many batches instead of continuing until
-// nothing is left.
-func New(ctx context.Context, cat Category, out io.Writer, dryRun bool, limit int) *Engine {
-	return &Engine{ctx: ctx, cat: cat, out: out, dryRun: dryRun, limit: limit}
+// When opts.DryRun is true, the engine navigates, logs in, and reports
+// whether items are present, but never clicks select-all, the action
+// button, or a confirm dialog — nothing on the account is modified.
+func New(ctx context.Context, cat Category, out io.Writer, opts Options) *Engine {
+	return &Engine{ctx: ctx, cat: cat, out: out, opts: opts}
+}
+
+func (e *Engine) hasDateRange() bool {
+	return e.opts.DateFrom != "" || e.opts.DateTo != ""
+}
+
+// ParseDateBound validates a date-range boundary before it's trusted enough
+// to interpolate into a JS snippet (see jsDateBound). An empty string is
+// valid and means "no bound." Callers (CLI flags, the GUI's JSON request)
+// should call this on both DateFrom and DateTo before building Options.
+func ParseDateBound(s string) error {
+	if s == "" {
+		return nil
+	}
+	_, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return fmt.Errorf("invalid date %q, expected YYYY-MM-DD: %w", s, err)
+	}
+	return nil
 }
 
 // Run navigates to the category's activity log and repeatedly selects,
@@ -86,14 +124,52 @@ func (e *Engine) Run() error {
 			return nil
 		}
 
-		if e.dryRun {
+		if e.opts.DryRun {
+			if e.hasDateRange() {
+				if err := e.loadUntilRangeCovered(); err != nil {
+					return err
+				}
+				// Safe to actually run: this only clicks item checkboxes to
+				// select them, which doesn't delete anything — it lets a
+				// dry run report a real, verified count instead of just
+				// "items found," confirming the date filter actually
+				// matches what's expected before doing this for real.
+				n, err := e.selectInRange()
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(e.out, "[dry-run] Would select %d item(s) of %s in range and trigger %q — stopping without changing anything.\n", n, e.cat.Name, e.cat.Verb)
+				return nil
+			}
 			fmt.Fprintf(e.out, "[dry-run] Items found for %s. Would select-all, trigger %q, and confirm here — stopping without changing anything.\n", e.cat.Name, e.cat.Verb)
 			return nil
 		}
 
-		if err := e.retry("select all", e.selectAll); err != nil {
+		if e.hasDateRange() {
+			if err := e.loadUntilRangeCovered(); err != nil {
+				return err
+			}
+			var selected int
+			selectStep := func() error {
+				n, err := e.selectInRange()
+				if err != nil {
+					return err
+				}
+				selected = n
+				return nil
+			}
+			if err := e.retry("select in range", selectStep); err != nil {
+				return err
+			}
+			if selected == 0 {
+				fmt.Fprintf(e.out, "No %s left in the selected date range (among items currently loaded). Done — %d batch(es) %s.\n", e.cat.Name, cycle, e.cat.Verb)
+				return nil
+			}
+			fmt.Fprintf(e.out, "Selected %d item(s) in range.\n", selected)
+		} else if err := e.retry("select all", e.selectAll); err != nil {
 			return err
 		}
+
 		if err := e.retry("trigger action", e.triggerAction); err != nil {
 			return err
 		}
@@ -110,12 +186,12 @@ func (e *Engine) Run() error {
 		cycle++
 		fmt.Fprintf(e.out, "Cycle %d: batch %s.\n", cycle, e.cat.Verb)
 
-		if e.limit > 0 && cycle >= e.limit {
-			fmt.Fprintf(e.out, "Reached the %d-batch limit. Stopping here.\n", e.limit)
+		if e.opts.Limit > 0 && cycle >= e.opts.Limit {
+			fmt.Fprintf(e.out, "Reached the %d-batch limit. Stopping here.\n", e.opts.Limit)
 			return nil
 		}
 
-		jitterSleep()
+		e.jitterSleep()
 	}
 }
 
@@ -143,6 +219,15 @@ func (e *Engine) Inspect() error {
 				return (t.length < 40 && /select all|select/i.test(t)) || /select all|select/i.test(a);
 			})
 			.slice(0, 15);
+		const scrollable = Array.from(document.querySelectorAll('*'))
+			.filter(el => el.scrollHeight > el.clientHeight + 50 && getComputedStyle(el).overflowY !== 'visible')
+			.slice(0, 5)
+			.map(el => ({
+				tag: el.tagName,
+				class: (el.className || '').toString().slice(0, 80),
+				scrollHeight: el.scrollHeight,
+				clientHeight: el.clientHeight,
+			}));
 		return JSON.stringify({
 			url: location.href,
 			title: document.title,
@@ -154,6 +239,10 @@ func (e *Engine) Inspect() error {
 				name: el.getAttribute('name'),
 				text: (el.textContent || '').slice(0, 60),
 			})),
+			scrollableCandidates: scrollable,
+			windowScrollable: document.body.scrollHeight > window.innerHeight,
+			bodyScrollHeight: document.body.scrollHeight,
+			windowInnerHeight: window.innerHeight,
 		}, null, 2);
 	})()`
 
@@ -351,7 +440,204 @@ func (e *Engine) navigate(url string) error {
 func (e *Engine) selectAll() error {
 	ctx, cancel := context.WithTimeout(e.ctx, actionTimeout)
 	defer cancel()
-	return chromedp.Run(ctx, chromedp.Click(checkboxSelector, chromedp.ByQuery))
+	if err := chromedp.Run(ctx, chromedp.Click(checkboxSelector, chromedp.ByQuery)); err != nil {
+		return err
+	}
+	return e.verifySelected()
+}
+
+// verifySelected confirms the select-all click actually registered rather
+// than trusting a successful click alone: chromedp.Click only reports
+// whether the click event was dispatched, not whether Facebook's UI
+// actually flipped the checkbox to selected, so a click that lands during
+// a re-render can silently no-op.
+func (e *Engine) verifySelected() error {
+	ctx, cancel := context.WithTimeout(e.ctx, 3*time.Second)
+	defer cancel()
+
+	var checked string
+	err := chromedp.Run(ctx, chromedp.AttributeValue(checkboxSelector, "aria-checked", &checked, nil, chromedp.ByQuery))
+	if err != nil {
+		return fmt.Errorf("checking selection state: %w", err)
+	}
+	if checked != "true" {
+		return fmt.Errorf("select-all did not register as checked (aria-checked=%q)", checked)
+	}
+	return nil
+}
+
+// dateRangeSelectScript walks the page in document order, tracking the most
+// recent day-group header ("November 17, 2020", an <h2>) as it goes, and
+// clicks every not-yet-selected item checkbox whose header falls within
+// [from, to]. Walking in document order (rather than querying headers and
+// checkboxes separately) is what lets a checkbox be matched to the header
+// that precedes it, since Facebook's markup doesn't attach the date to the
+// item element itself. querySelectorAll with a comma-separated selector
+// returns matches in document order, which this depends on.
+const dateRangeSelectScript = `(() => {
+	const dateRe = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/;
+	const from = %s;
+	const to = %s;
+	const nodes = Array.from(document.querySelectorAll('h2, input[name="comet_activity_log_item_checkbox"]'));
+	let currentDate = null;
+	let clicked = 0;
+	for (const node of nodes) {
+		if (node.tagName === 'H2') {
+			const text = (node.textContent || '').trim();
+			if (dateRe.test(text)) {
+				currentDate = new Date(text);
+			}
+			continue;
+		}
+		if (!currentDate) continue;
+		if (from !== null && currentDate < from) continue;
+		if (to !== null && currentDate > to) continue;
+		if (node.getAttribute('aria-checked') !== 'true') {
+			node.click();
+			clicked++;
+		}
+	}
+	return clicked;
+})()`
+
+const (
+	scrollWait        = 3 * time.Second
+	maxScrollAttempts = 300             // generous upper bound for very old/large accounts
+	maxScrollDuration = 5 * time.Minute // safety net alongside the attempt cap
+	maxStalls         = 3               // consecutive no-growth checks before concluding "true end"
+)
+
+// oldestLoadedDateScript returns the day-group header text of the
+// oldest item currently rendered — the last date header in document
+// order, since Facebook's activity log lists newest first — or "" if
+// none are loaded yet.
+const oldestLoadedDateScript = `(() => {
+	const dateRe = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/;
+	const headers = Array.from(document.querySelectorAll('h2'))
+		.map(h => (h.textContent || '').trim())
+		.filter(t => dateRe.test(t));
+	return headers.length ? headers[headers.length - 1] : '';
+})()`
+
+// loadUntilRangeCovered scrolls the activity log to trigger Facebook's own
+// lazy-loading until the oldest currently-rendered item is at or before
+// DateFrom (so the whole requested range is covered), or until scrolling
+// stops loading anything new (the true end of the list). A no-op when
+// DateFrom isn't set, since there's no lower bound to scroll back to.
+func (e *Engine) loadUntilRangeCovered() error {
+	if e.opts.DateFrom == "" {
+		return nil
+	}
+	from, err := time.Parse("2006-01-02", e.opts.DateFrom)
+	if err != nil {
+		return fmt.Errorf("parsing date-from: %w", err)
+	}
+
+	deadline := time.Now().Add(maxScrollDuration)
+	lastCount := -1
+	stalls := 0
+
+	for attempt := 0; attempt < maxScrollAttempts && time.Now().Before(deadline); attempt++ {
+		oldest, err := e.oldestLoadedDate()
+		if err != nil {
+			return fmt.Errorf("checking loaded date range: %w", err)
+		}
+		if oldest != "" {
+			oldestDate, err := time.Parse("January 2, 2006", oldest)
+			if err == nil && !oldestDate.After(from) {
+				return nil // loaded far enough back to cover the requested range
+			}
+		}
+
+		count, err := e.countLoadedItems()
+		if err != nil {
+			return fmt.Errorf("counting loaded items: %w", err)
+		}
+		if count == lastCount {
+			stalls++
+			// A single unchanged count can just mean the network fetch for
+			// the next page hadn't finished yet when we checked — require a
+			// few in a row, not one, before concluding this is genuinely
+			// the end of the list rather than a slow load.
+			if stalls >= maxStalls {
+				fmt.Fprintf(e.out, "No more %s loaded after %d attempts — this looks like the true end of the list (oldest: %s).\n", e.cat.Name, stalls, orNone(oldest))
+				return nil
+			}
+		} else {
+			stalls = 0
+		}
+		lastCount = count
+
+		if attempt%5 == 0 {
+			fmt.Fprintf(e.out, "Scrolling to load older %s (oldest loaded so far: %s)...\n", e.cat.Name, orNone(oldest))
+		}
+
+		if err := e.scrollToBottom(); err != nil {
+			return fmt.Errorf("scrolling: %w", err)
+		}
+		time.Sleep(scrollWait)
+	}
+	return nil
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none yet"
+	}
+	return s
+}
+
+func (e *Engine) oldestLoadedDate() (string, error) {
+	ctx, cancel := context.WithTimeout(e.ctx, actionTimeout)
+	defer cancel()
+	var date string
+	err := chromedp.Run(ctx, chromedp.Evaluate(oldestLoadedDateScript, &date))
+	return date, err
+}
+
+func (e *Engine) countLoadedItems() (int, error) {
+	ctx, cancel := context.WithTimeout(e.ctx, actionTimeout)
+	defer cancel()
+	var count int
+	err := chromedp.Run(ctx, chromedp.Evaluate(
+		`document.querySelectorAll('input[name="comet_activity_log_item_checkbox"]').length`, &count))
+	return count, err
+}
+
+func (e *Engine) scrollToBottom() error {
+	ctx, cancel := context.WithTimeout(e.ctx, actionTimeout)
+	defer cancel()
+	return chromedp.Run(ctx, chromedp.Evaluate(`window.scrollTo(0, document.body.scrollHeight)`, nil))
+}
+
+// selectInRange clicks every currently-loaded item whose day-group header
+// falls within the configured date range, and reports how many it clicked.
+// It never touches the select-all checkbox, since that would select
+// everything regardless of date.
+func (e *Engine) selectInRange() (int, error) {
+	// A wide date range can mean scrolling loads months or years of items
+	// before selection runs, so this walks (and clicks within) a much
+	// larger DOM than a single page of results — actionTimeout's 10s,
+	// sized for a single click, isn't enough headroom for that.
+	ctx, cancel := context.WithTimeout(e.ctx, selectInRangeTimeout)
+	defer cancel()
+
+	script := fmt.Sprintf(dateRangeSelectScript, jsDateBound(e.opts.DateFrom), jsDateBound(e.opts.DateTo))
+	var clicked int
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &clicked)); err != nil {
+		return 0, fmt.Errorf("selecting items in date range: %w", err)
+	}
+	return clicked, nil
+}
+
+// jsDateBound renders a "YYYY-MM-DD" string (already validated by the
+// caller — see ParseDateBound) as a JS Date literal, or the literal null
+// for an open-ended bound.
+func jsDateBound(s string) string {
+	if s == "" {
+		return "null"
+	}
+	return fmt.Sprintf("new Date(%q)", s)
 }
 
 func (e *Engine) triggerAction() error {
@@ -385,10 +671,14 @@ func (e *Engine) retry(label string, step func() error) error {
 
 // jitterSleep pauses for a randomized interval between batches. Fixed,
 // metronomic delays are themselves a bot signal, so the interval is
-// randomized rather than constant.
-func jitterSleep() {
-	minMs, maxMs := 1500, 3500
+// randomized rather than constant — and deliberately generous (several
+// seconds up to half a minute) rather than just enough to be polite, since
+// a tight, consistent cadence across many batches is itself a pattern
+// Facebook's abuse detection watches for.
+func (e *Engine) jitterSleep() {
+	minMs, maxMs := 6000, 25000
 	d := time.Duration(minMs+rand.Intn(maxMs-minMs)) * time.Millisecond
+	fmt.Fprintf(e.out, "Pausing %s before the next batch...\n", d.Round(time.Second))
 	time.Sleep(d)
 }
 
