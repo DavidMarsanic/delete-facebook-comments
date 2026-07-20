@@ -1,8 +1,9 @@
 # fberadicator
 
-A command-line tool that clears sections of your own Facebook Activity Log —
-comments, likes, page/interest likes, posts, or archives posts — by driving a
-real Chrome/Chromium window over the Chrome DevTools Protocol.
+A tool that clears sections of your own Facebook Activity Log — comments,
+likes, page/interest likes, posts, or archives posts — by driving a real
+Chrome/Chromium window over the Chrome DevTools Protocol. Usable either as a
+CLI or through a small local web GUI.
 
 This is a Go port of the original Python/Selenium scripts in the parent
 repository, rewritten to build with a plain `go build ./...` (no cgo, no
@@ -31,8 +32,12 @@ external WebDriver binary) so it can go through a Go-only build pipeline.
 - An already-running instance from a previous invocation is reused where
   possible, rather than relaunching Chrome every time.
 - Once signed in, it navigates to `facebook.com/me/allactivity` for the
-  selected category and loops: select all → trigger the action (remove /
-  trash / archive) → confirm → wait → repeat, until nothing is left.
+  selected category and loops: select all (or select-in-range, with a date
+  filter) → trigger the action (remove / trash / archive) → confirm → wait →
+  repeat, until nothing is left. Every cycle — not just the first — patiently
+  waits out a login prompt, a two-factor code request, or a CAPTCHA/checkpoint
+  before continuing, since Facebook can interrupt mid-session on accounts
+  doing bulk actions, not only at the very start.
 
 ## Prerequisites
 
@@ -52,6 +57,20 @@ go build -o fberadicator .
 
 ## Usage
 
+### GUI
+
+```bash
+./fberadicator -gui
+```
+
+Starts a local web server and opens it in your default browser (a separate
+page from the automation-controlled Chrome window). Pick a mode, an optional
+date range, and a batch limit, then Start — progress streams live. Stop
+interrupts the current run without closing the browser, so you can start
+another one right after.
+
+### CLI
+
 ```bash
 ./fberadicator -mode comments        # clear comments
 ./fberadicator -mode likes           # undo post likes
@@ -62,14 +81,22 @@ go build -o fberadicator .
 
 Flags:
 
-| Flag              | Effect                                                                 |
-|--------------------|-------------------------------------------------------------------------|
-| `-dry-run`         | Detect items only; never clicks select-all, the action, or confirm.    |
-| `-limit N`         | Stop after N batches instead of continuing until nothing is left.      |
-| `-inspect`         | Read-only diagnostic dump of the page's selection UI.                  |
-| `-inspect-dialog`  | Selects and opens the confirm dialog, then dumps it — never confirms.  |
-| `-html <path>`     | Save the final page's full HTML to a file.                             |
-| `-screenshot <path>` | Save a PNG screenshot of the final page state.                       |
+| Flag                  | Effect                                                                    |
+|-----------------------|----------------------------------------------------------------------------|
+| `-gui`                | Start the local web GUI instead of running from flags.                    |
+| `-dry-run`            | Detect (and, with a date range, actually select) items only; never triggers or confirms. |
+| `-limit N`            | Stop after N batches instead of continuing until nothing is left.         |
+| `-date-from YYYY-MM-DD` | Only select items on/after this date (by Facebook's own day-group headers). |
+| `-date-to YYYY-MM-DD`   | Only select items on/before this date.                                  |
+| `-inspect`            | Read-only diagnostic dump of the page's selection UI.                     |
+| `-inspect-dialog`     | Selects and opens the confirm dialog, then dumps it — never confirms.     |
+| `-html <path>`        | Save the final page's full HTML to a file.                                |
+| `-screenshot <path>`  | Save a PNG screenshot of the final page state.                            |
+
+A date range scrolls the activity log to trigger Facebook's own lazy-loading
+until it's loaded far enough back to cover the range (or hits the true end
+of the list), then selects and processes only the items whose day header
+falls inside it — a few items at a time per confirm, same as normal.
 
 The browser window is left open after the tool finishes, so the result is
 still visible instead of vanishing immediately — cancel only detaches, it
@@ -79,20 +106,27 @@ doesn't close the window.
 
 - Use this only on your own account. Bulk automated actions are exactly the
   pattern Facebook's abuse detection watches for.
-- The tool randomizes the delay between batches rather than running at a
-  fixed cadence, and checks for checkpoint/CAPTCHA/rate-limit pages before
-  each batch. If Facebook interrupts the flow, the tool stops and tells you
+- The tool pauses several seconds to half a minute (randomized) between
+  batches rather than running at a fixed cadence, and checks for
+  checkpoint/CAPTCHA/two-factor/rate-limit pages before every batch, not just
+  at the start. If Facebook interrupts the flow, the tool waits and tells you
   to resolve it by hand in the open browser window — it will not try to
-  guess its way past a CAPTCHA.
+  guess its way past a CAPTCHA, and won't give up until you do (or it times
+  out after 10 minutes).
+- After selecting, the tool verifies the selection actually registered
+  (checking `aria-checked`) before triggering the action, rather than
+  trusting that a click succeeded just because it didn't error.
 - There is no undo for removed comments, likes, or trashed posts once you
   confirm Facebook's own confirmation dialog.
 
 ## Status
 
-Verified against a real account: login/cookie-seeding, CAPTCHA/checkpoint
-detection and patient waiting, and a real single-item deletion (selector
-confirmed correct — item count dropped by exactly one) all work end to end
-for the `comments` mode. The other modes (`likes`, `interests`, `posts`,
+Verified against a real account: login/cookie-seeding, CAPTCHA/checkpoint/
+two-factor detection and patient waiting (both at the start and mid-session),
+date-range selection with scroll-to-load (tested scrolling back from 2020 to
+2016), the GUI's Start/Stop flow, and real deletions (selector confirmed
+correct — item count dropped by exactly the expected amount) all work end to
+end for the `comments` mode. The other modes (`likes`, `interests`, `posts`,
 `archive-posts`) share the same engine and selector-porting approach but
 haven't each been individually exercised against a live account yet —
 Facebook's DOM can change, so treat the first run per mode as a supervised

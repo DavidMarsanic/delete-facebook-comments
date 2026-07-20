@@ -124,18 +124,19 @@
       </div>
     </div>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="dryRun" checked>
-      <label for="dryRun">Dry run — detect only, don't delete anything</label>
+    <div class="row">
+      <div><button id="startBtn">Start</button></div>
+      <div><button id="stopBtn" class="danger" disabled>Stop</button></div>
     </div>
-
-    <button id="startBtn">Start</button>
     <p class="safety">
-      This acts on your own Facebook account only. A Chrome window will open
-      (or reuse one already open) — if it asks you to log in or solve a
-      CAPTCHA, do that there; this page will keep waiting automatically.
-      A date range only matches items already loaded on the page — it
-      doesn't scroll to load more.
+      Requires Google Chrome (or Chromium/Brave/Edge/Arc) already installed —
+      this tool cannot install a browser for you. A Chrome window will open
+      (or reuse one already open) — if it asks you to log in to Facebook or
+      solve a CAPTCHA, do that there; this page will keep waiting
+      automatically, no need to restart it.
+      <br><br>
+      This acts on your own Facebook account only. A date range will scroll
+      to load older items as needed to cover it.
     </p>
   </div>
 
@@ -150,8 +151,8 @@ const modeSelect = document.getElementById('mode');
 const limitInput = document.getElementById('limit');
 const dateFromInput = document.getElementById('dateFrom');
 const dateToInput = document.getElementById('dateTo');
-const dryRunCheckbox = document.getElementById('dryRun');
 const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
 const logEl = document.getElementById('log');
 const statusEl = document.getElementById('status');
 
@@ -182,10 +183,12 @@ function streamLog() {
     es.close();
     statusEl.textContent = 'Done.';
     startBtn.disabled = false;
+    stopBtn.disabled = true;
   });
   es.onerror = () => {
     es.close();
     startBtn.disabled = false;
+    stopBtn.disabled = true;
   };
 }
 
@@ -193,10 +196,10 @@ startBtn.addEventListener('click', async () => {
   logEl.textContent = '';
   statusEl.textContent = 'Running…';
   startBtn.disabled = true;
+  stopBtn.disabled = false;
 
   const body = {
     mode: modeSelect.value,
-    dryRun: dryRunCheckbox.checked,
     limit: parseInt(limitInput.value, 10) || 0,
     dateFrom: dateFromInput.value,
     dateTo: dateToInput.value,
@@ -213,10 +216,17 @@ startBtn.addEventListener('click', async () => {
     appendLine('Error: ' + text);
     statusEl.textContent = 'Failed to start.';
     startBtn.disabled = false;
+    stopBtn.disabled = true;
     return;
   }
 
   streamLog();
+});
+
+stopBtn.addEventListener('click', async () => {
+  stopBtn.disabled = true;
+  statusEl.textContent = 'Stopping…';
+  await fetch('/api/stop', { method: 'POST' });
 });
 
 loadModes();
