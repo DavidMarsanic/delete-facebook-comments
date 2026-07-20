@@ -1,2 +1,7 @@
 /fberadicator
 /fberadicator.exe
+
+# Local-machine build/signing output for the macOS app bundle — regenerate
+# with `go build` + `codesign`, not something the Securexe source repo needs.
+/packaging/macos/fberadicator.app/Contents/MacOS/fberadicator-bin
+/packaging/macos/fberadicator.app/Contents/_CodeSignature/

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fberadicator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧹</text></svg>">
 <style>
   :root {
     color-scheme: light dark;
@@ -34,19 +35,18 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     display: flex;
     justify-content: center;
-    padding: 2rem 1rem;
+    padding: 1rem;
   }
-  main { width: 100%; max-width: 640px; }
-  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-  .subtitle { color: var(--muted); margin: 0 0 1.5rem; font-size: .9rem; }
+  main { width: 100%; max-width: 520px; }
+  h1 { font-size: 1.1rem; margin: 0 0 .6rem; }
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
+    padding: .85rem;
+    margin-bottom: .6rem;
   }
-  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .35rem; }
+  label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .25rem; }
   select, input[type=number] {
     width: 100%;
     padding: .5rem .6rem;
@@ -56,9 +56,10 @@
     color: var(--text);
     font-size: .95rem;
   }
-  .row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+  .row { display: flex; gap: .75rem; margin-bottom: .6rem; }
   .row > div { flex: 1; }
-  .checkbox-row { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+  .row:last-child { margin-bottom: 0; }
+  .checkbox-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
   .checkbox-row input { width: auto; }
   .checkbox-row label { margin: 0; color: var(--text); font-size: .9rem; }
   button {
@@ -75,31 +76,30 @@
   button:disabled { opacity: .5; cursor: not-allowed; }
   button.danger { background: var(--danger); }
   .safety {
-    font-size: .8rem;
+    font-size: .75rem;
     color: var(--muted);
-    margin-top: .75rem;
-    line-height: 1.4;
+    margin: .6rem 0 0;
+    line-height: 1.35;
   }
   pre#log {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: .75rem;
-    height: 260px;
+    padding: .6rem;
+    height: 300px;
     overflow-y: auto;
-    font-size: .8rem;
-    line-height: 1.5;
+    font-size: .78rem;
+    line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
   }
-  .status { font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
+  .status { font-size: .8rem; color: var(--muted); margin-bottom: .4rem; }
 </style>
 </head>
 <body>
 <main>
   <h1>fberadicator</h1>
-  <p class="subtitle">Clears your own Facebook Activity Log — comments, likes, interests, or posts.</p>
 
   <div class="panel">
     <div class="row">
@@ -129,14 +129,8 @@
       <div><button id="stopBtn" class="danger" disabled>Stop</button></div>
     </div>
     <p class="safety">
-      Requires Google Chrome (or Chromium/Brave/Edge/Arc) already installed —
-      this tool cannot install a browser for you. A Chrome window will open
-      (or reuse one already open) — if it asks you to log in to Facebook or
-      solve a CAPTCHA, do that there; this page will keep waiting
-      automatically, no need to restart it.
-      <br><br>
-      This acts on your own Facebook account only. A date range will scroll
-      to load older items as needed to cover it.
+      Your own account only. If Chrome asks for a login or a CAPTCHA, handle
+      it there — this page keeps waiting automatically.
     </p>
   </div>
 
@@ -156,8 +150,36 @@ const stopBtn = document.getElementById('stopBtn');
 const logEl = document.getElementById('log');
 const statusEl = document.getElementById('status');
 
+// playAlertSound is a self-contained beep (no audio file to ship) for
+// moments that need a human — e.g. Facebook re-asking for your password
+// mid-run. Browsers require some prior user gesture on the page before
+// audio is allowed to play; clicking Start already satisfies that for the
+// rest of the run.
+function playAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.6);
+  } catch (e) {
+    // Audio isn't essential to the tool working — never let it break the run.
+  }
+}
+
 function appendLine(text) {
-  logEl.textContent += (logEl.textContent ? '\n' : '') + text;
+  const clean = text.replace(/^/, '');
+  if (clean.includes('[ATTENTION]')) {
+    playAlertSound();
+    statusEl.textContent = 'Needs your attention — check the Chrome window.';
+  }
+  logEl.textContent += (logEl.textContent ? '\n' : '') + clean;
   logEl.scrollTop = logEl.scrollHeight;
 }
 

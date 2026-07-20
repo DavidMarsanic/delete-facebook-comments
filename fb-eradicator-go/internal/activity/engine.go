@@ -20,8 +20,17 @@ const (
 	activityURLTemplate = "https://www.facebook.com/me/allactivity?activity_history=false&category_key=%s&manage_mode=false&should_load_landing_page=false"
 	checkboxSelector     = `[name="comet_activity_log_select_all_checkbox"]`
 
-	maxStepRetries  = 3
+	maxStepRetries  = 5
 	itemPollTimeout = 20 * time.Second
+
+	// maxConsecutiveFailures bounds how many batches in a row can fail
+	// (even after each one's own maxStepRetries attempts and a full page
+	// reload) before Run gives up entirely. This is what lets a run left
+	// unattended for hours shrug off an occasional stuck batch instead of
+	// dying on the first one — a single flaky cycle in an otherwise long,
+	// mostly-successful run resets the counter back to zero rather than
+	// ending the run.
+	maxConsecutiveFailures = 5
 
 	loginWaitTimeout = 10 * time.Minute
 	loginPollEvery   = 2 * time.Second
@@ -33,7 +42,7 @@ const (
 	// wait) hangs the whole run forever instead of failing with a clear
 	// error.
 	navTimeout    = 20 * time.Second
-	actionTimeout = 10 * time.Second
+	actionTimeout = 15 * time.Second
 
 	// selectInRangeTimeout is larger than actionTimeout because a wide date
 	// range can mean walking and clicking through months or years of
@@ -106,6 +115,7 @@ func (e *Engine) Run() error {
 	}
 
 	cycle := 0
+	consecutiveFailures := 0
 	for {
 		// Checked at the top of every cycle, not just once before the loop:
 		// Facebook can ask for your password again mid-session on accounts
@@ -145,42 +155,30 @@ func (e *Engine) Run() error {
 			return nil
 		}
 
-		if e.hasDateRange() {
-			if err := e.loadUntilRangeCovered(); err != nil {
-				return err
+		done, cycleErr := e.processCycle()
+		if cycleErr != nil {
+			if e.ctx.Err() != nil {
+				// Stopped (or the connection dropped) — no amount of
+				// reloading fixes a cancelled context, so don't try.
+				return fmt.Errorf("stopped: %w", e.ctx.Err())
 			}
-			var selected int
-			selectStep := func() error {
-				n, err := e.selectInRange()
-				if err != nil {
-					return err
-				}
-				selected = n
-				return nil
+			consecutiveFailures++
+			fmt.Fprintf(e.out, "Batch failed (%d/%d consecutive failures): %v\n", consecutiveFailures, maxConsecutiveFailures, cycleErr)
+			if consecutiveFailures >= maxConsecutiveFailures {
+				return fmt.Errorf("giving up after %d consecutive batch failures: %w", maxConsecutiveFailures, cycleErr)
 			}
-			if err := e.retry("select in range", selectStep); err != nil {
-				return err
+			fmt.Fprintln(e.out, "Reloading the activity log and trying again...")
+			if err := e.navigate(url); err != nil {
+				return fmt.Errorf("re-navigating after failure: %w", err)
 			}
-			if selected == 0 {
-				fmt.Fprintf(e.out, "No %s left in the selected date range (among items currently loaded). Done — %d batch(es) %s.\n", e.cat.Name, cycle, e.cat.Verb)
-				return nil
-			}
-			fmt.Fprintf(e.out, "Selected %d item(s) in range.\n", selected)
-		} else if err := e.retry("select all", e.selectAll); err != nil {
-			return err
+			time.Sleep(5 * time.Second)
+			continue
 		}
+		consecutiveFailures = 0
 
-		if err := e.retry("trigger action", e.triggerAction); err != nil {
-			return err
-		}
-
-		// The confirmation dialog animates in; clicking immediately can
-		// land before it's actually ready, especially on later cycles once
-		// the page has more DOM churn behind it.
-		time.Sleep(1 * time.Second)
-
-		if err := e.retry("confirm", e.confirmAction); err != nil {
-			return err
+		if done {
+			fmt.Fprintf(e.out, "No %s left in the selected date range (among items currently loaded). Done — %d batch(es) %s.\n", e.cat.Name, cycle, e.cat.Verb)
+			return nil
 		}
 
 		cycle++
@@ -193,6 +191,51 @@ func (e *Engine) Run() error {
 
 		e.jitterSleep()
 	}
+}
+
+// processCycle selects (all, or everything in the configured date range),
+// triggers the category's action, and confirms it — one batch. done=true
+// (with err=nil) means date-range mode found nothing left to select among
+// currently-loaded items — a normal completion, not a failure.
+func (e *Engine) processCycle() (done bool, err error) {
+	if e.hasDateRange() {
+		if err := e.loadUntilRangeCovered(); err != nil {
+			return false, err
+		}
+		var selected int
+		selectStep := func() error {
+			n, err := e.selectInRange()
+			if err != nil {
+				return err
+			}
+			selected = n
+			return nil
+		}
+		if err := e.retry("select in range", selectStep); err != nil {
+			return false, err
+		}
+		if selected == 0 {
+			return true, nil
+		}
+		fmt.Fprintf(e.out, "Selected %d item(s) in range.\n", selected)
+	} else if err := e.retry("select all", e.selectAll); err != nil {
+		return false, err
+	}
+
+	if err := e.retry("trigger action", e.triggerAction); err != nil {
+		return false, err
+	}
+
+	// The confirmation dialog animates in; clicking immediately can land
+	// before it's actually ready, especially on later cycles once the page
+	// has more DOM churn behind it.
+	time.Sleep(1 * time.Second)
+
+	if err := e.retry("confirm", e.confirmAction); err != nil {
+		return false, err
+	}
+
+	return false, nil
 }
 
 // Inspect navigates to the category's activity log, waits past any
@@ -339,7 +382,7 @@ func (e *Engine) ensureItemsReady() (bool, error) {
 		return false, nil
 	}
 
-	fmt.Fprintln(e.out, reason)
+	e.alert(reason)
 	fmt.Fprintln(e.out, "This tool will keep checking automatically — no need to re-run it.")
 
 	deadline := time.Now().Add(loginWaitTimeout)
@@ -347,6 +390,10 @@ func (e *Engine) ensureItemsReady() (bool, error) {
 	lastReason := reason
 	for time.Now().Before(deadline) {
 		time.Sleep(loginPollEvery)
+
+		if e.ctx.Err() != nil {
+			return false, fmt.Errorf("stopped: %w", e.ctx.Err())
+		}
 
 		reason, waiting := e.notReadyReason()
 		if !waiting {
@@ -359,7 +406,9 @@ func (e *Engine) ensureItemsReady() (bool, error) {
 		}
 
 		if reason != lastReason {
-			fmt.Fprintln(e.out, reason)
+			// A genuinely new kind of interruption (e.g. login turned into
+			// a CAPTCHA) — worth a fresh alert, not just a silent update.
+			e.alert(reason)
 			lastReason = reason
 			lastRemind = time.Now()
 		} else if time.Since(lastRemind) >= loginRemindEvery {
@@ -368,6 +417,17 @@ func (e *Engine) ensureItemsReady() (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("timed out waiting — last state: %s", lastReason)
+}
+
+// attentionMarker prefixes a log line the GUI's frontend watches for to
+// trigger an audible alert — e.g. a Facebook password/2FA re-prompt during
+// an otherwise-unattended run is easy to miss without one. The leading
+// ASCII bell character gives CLI users the same nudge: most terminals beep
+// on \a if they haven't disabled it.
+const attentionMarker = "[ATTENTION]"
+
+func (e *Engine) alert(reason string) {
+	fmt.Fprintf(e.out, "\a%s %s\n", attentionMarker, reason)
 }
 
 // notReadyReason reports whether the browser is currently showing something
@@ -660,6 +720,15 @@ func (e *Engine) retry(label string, step func() error) error {
 	for attempt := 1; attempt <= maxStepRetries; attempt++ {
 		if err := step(); err != nil {
 			lastErr = err
+			// Stop (or the browser connection dropping) cancels e.ctx —
+			// once that's happened, every remaining attempt is guaranteed
+			// to fail the same way, so further retries (and their backoff
+			// sleeps) just delay reporting what's already a foregone
+			// conclusion. Bail immediately instead of grinding through the
+			// rest of the budget.
+			if e.ctx.Err() != nil {
+				return fmt.Errorf("%s: stopped: %w", label, e.ctx.Err())
+			}
 			fmt.Fprintf(e.out, "%s failed (attempt %d/%d): %v\n", label, attempt, maxStepRetries, err)
 			time.Sleep(time.Duration(attempt) * 2 * time.Second)
 			continue

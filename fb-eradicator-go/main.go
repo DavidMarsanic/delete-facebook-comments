@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -129,9 +130,52 @@ func runGUI() error {
 
 	addr := fmt.Sprintf("http://%s", ln.Addr())
 	fmt.Println("GUI running at", addr)
-	openBrowser(addr)
+	openAppWindow(addr)
 
 	return http.Serve(ln, webui.New().Handler())
+}
+
+// openAppWindow opens addr in a borderless Chrome "app mode" window when a
+// Chromium-based browser is available — no address bar or tabs, closer to
+// a standalone app window than an ordinary browser tab — using its own
+// small profile directory so it doesn't collide with the automation
+// Chrome instance or the user's regular browsing session. Falls back to
+// just opening the OS's default browser if no such browser is found.
+func openAppWindow(url string) {
+	chromePath, err := browser.Find()
+	if err != nil {
+		openBrowser(url)
+		return
+	}
+
+	profileDir, err := guiProfileDir()
+	if err != nil {
+		openBrowser(url)
+		return
+	}
+
+	cmd := exec.Command(chromePath,
+		"--app="+url,
+		"--user-data-dir="+profileDir,
+		"--window-size=560,700",
+		"--no-first-run",
+		"--no-default-browser-check",
+	)
+	if err := cmd.Start(); err != nil {
+		openBrowser(url)
+	}
+}
+
+func guiProfileDir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "fb-eradicator", "gui-profile")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func openBrowser(url string) {
