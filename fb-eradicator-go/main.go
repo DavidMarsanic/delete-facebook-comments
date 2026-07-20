@@ -99,9 +99,6 @@ func run() error {
 	}
 
 	if runErr != nil {
-		if errors.Is(runErr, activity.ErrBlocked) {
-			return runErr
-		}
 		return fmt.Errorf("run failed: %w", runErr)
 	}
 	return nil

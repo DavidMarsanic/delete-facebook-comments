@@ -23,6 +23,13 @@ var blockSignals = []string{
 	"you're temporarily blocked",
 	"unusual activity",
 	"security check",
+	"two-factor",
+	"two factor",
+	"enter the code",
+	"enter the login code",
+	"authentication code",
+	"we sent a code",
+	"approvals code",
 }
 
 // checkBlocked inspects the current URL and visible page text for signals
@@ -49,6 +56,9 @@ func (e *Engine) checkBlocked() (string, error) {
 
 	if strings.Contains(lowerURL, "checkpoint") || strings.Contains(lowerURL, "/recover/") {
 		return "Facebook has redirected to a checkpoint/verification page", nil
+	}
+	if strings.Contains(lowerURL, "two_step_verification") || strings.Contains(lowerURL, "two_factor") {
+		return "Facebook is asking for a two-factor authentication code", nil
 	}
 
 	for _, signal := range blockSignals {

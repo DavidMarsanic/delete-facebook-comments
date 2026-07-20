@@ -36,9 +36,6 @@ const (
 	actionTimeout = 10 * time.Second
 )
 
-// ErrBlocked is returned when Facebook interrupts the flow with a checkpoint,
-// CAPTCHA, or rate-limit signal. The caller should stop, not retry.
-var ErrBlocked = errors.New("facebook has interrupted the flow and needs manual attention")
 
 // Engine drives one category's automation loop against an already-open
 // chromedp browser context.
@@ -70,17 +67,18 @@ func (e *Engine) Run() error {
 		return fmt.Errorf("navigating to activity log: %w", err)
 	}
 
-	present, err := e.ensureItemsReady()
-	if err != nil {
-		return err
-	}
-
 	cycle := 0
 	for {
-		if reason, err := e.checkBlocked(); err != nil {
+		// Checked at the top of every cycle, not just once before the loop:
+		// Facebook can ask for your password again mid-session on accounts
+		// doing bulk actions, not only at the very start, and a checkpoint
+		// or CAPTCHA can just as easily appear between batches. Routing
+		// every cycle through the same patient wait ensureItemsReady already
+		// does for the initial login means any of these get waited through
+		// consistently instead of only being handled at the start.
+		present, err := e.ensureItemsReady()
+		if err != nil {
 			return err
-		} else if reason != "" {
-			return fmt.Errorf("%w: %s — resolve this in the open Chrome window, then re-run the tool", ErrBlocked, reason)
 		}
 
 		if !present {
@@ -118,12 +116,6 @@ func (e *Engine) Run() error {
 		}
 
 		jitterSleep()
-
-		present = e.waitForNextCycle()
-		if !present {
-			fmt.Fprintf(e.out, "No further %s detected. Done — %d batch(es) %s.\n", e.cat.Name, cycle, e.cat.Verb)
-			return nil
-		}
 	}
 }
 
@@ -374,22 +366,6 @@ func (e *Engine) confirmAction() error {
 	return chromedp.Run(ctx, chromedp.Click(e.cat.ConfirmSel, queryOpt(e.cat.ConfirmXPath)))
 }
 
-// waitForNextCycle polls for the select-all checkbox to become clickable
-// again after a batch action, giving the page time to settle. It returns
-// false if nothing reappears within the poll window, signalling "done."
-func (e *Engine) waitForNextCycle() bool {
-	deadline := time.Now().Add(itemPollTimeout)
-	for time.Now().Before(deadline) {
-		ctx, cancel := context.WithTimeout(e.ctx, 1*time.Second)
-		err := chromedp.Run(ctx, chromedp.WaitVisible(checkboxSelector, chromedp.ByQuery))
-		cancel()
-		if err == nil {
-			return true
-		}
-		fmt.Fprintln(e.out, "Waiting for the next batch to become selectable...")
-	}
-	return false
-}
 
 // retry runs step up to maxStepRetries times with linear backoff, giving
 // Facebook's UI time to catch up before treating a failure as fatal.
