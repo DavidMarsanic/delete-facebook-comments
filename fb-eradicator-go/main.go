@@ -130,7 +130,14 @@ func runGUI() error {
 
 	addr := fmt.Sprintf("http://%s", ln.Addr())
 	fmt.Println("GUI running at", addr)
-	openAppWindow(addr)
+
+	// When a host process (securexe-launcher) is the one showing the UI —
+	// in its own native window, so it can get a real Dock identity instead
+	// of a spawned Chrome window — it sets this before starting us. Opening
+	// our own Chrome window too would just leave a second, redundant one.
+	if os.Getenv("SECUREXE_HOSTED") == "" {
+		openAppWindow(addr)
+	}
 
 	return http.Serve(ln, webui.New().Handler())
 }
