@@ -129,7 +129,13 @@ func runGUI() error {
 	}
 
 	addr := fmt.Sprintf("http://%s", ln.Addr())
-	fmt.Println("GUI running at", addr)
+	// Stderr, not stdout: securexe-launcher's hosted-window mechanism
+	// discovers this URL by reading the child process's stderr specifically
+	// (see hosted.rs) — printing it to stdout instead means that line is
+	// silently discarded (hosted.rs redirects the child's stdout to
+	// /dev/null), the launcher waits out its full timeout, and falls back
+	// to spawning this app's own Chrome window instead of hosting it.
+	fmt.Fprintln(os.Stderr, "GUI running at", addr)
 
 	// When a host process (securexe-launcher) is the one showing the UI —
 	// in its own native window, so it can get a real Dock identity instead
